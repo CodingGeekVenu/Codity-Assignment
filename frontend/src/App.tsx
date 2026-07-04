@@ -1,0 +1,229 @@
+import { useState, useEffect } from 'react'
+import { LayoutDashboard, ListTree, Bug, Play, Pause } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import axios from 'axios'
+
+const API_BASE = 'http://localhost:8000'
+const DEFAULT_PROJ_ID = '87453ee8-cadf-4200-bf81-630edadde7b6'
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('overview')
+  const [queues, setQueues] = useState<any[]>([])
+  const [jobs, setJobs] = useState<any[]>([])
+
+  const [dlqJobs, setDlqJobs] = useState<any[]>([])
+
+  // Polling logic
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [qRes] = await Promise.all([
+          axios.get(`${API_BASE}/queues/?project_id=${DEFAULT_PROJ_ID}`)
+        ])
+        setQueues(qRes.data)
+        
+        // Fetch jobs for each queue
+        let allJobs: any[] = []
+        for (const q of qRes.data) {
+          const res = await axios.get(`${API_BASE}/jobs/queue/${q.id}?limit=20`)
+          allJobs = [...allJobs, ...res.data]
+        }
+        allJobs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        setJobs(allJobs)
+
+        // Fetch DLQ
+        const dlqRes = await axios.get(`${API_BASE}/jobs/dlq/all`)
+        setDlqJobs(dlqRes.data)
+      } catch (err) {
+        console.error("Polling error", err)
+      }
+    }
+    
+    fetchData()
+    const interval = setInterval(fetchData, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const toggleQueue = async (queue: any) => {
+    try {
+      await axios.patch(`${API_BASE}/queues/${queue.id}`, { is_paused: !queue.is_paused })
+    } catch (e) {
+      console.error("Failed to toggle queue", e)
+    }
+  }
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'QUEUED': return <Badge variant="info">QUEUED</Badge>
+      case 'RUNNING': return <Badge variant="warning">RUNNING</Badge>
+      case 'COMPLETED': return <Badge variant="success">COMPLETED</Badge>
+      case 'FAILED': return <Badge variant="destructive">FAILED</Badge>
+      default: return <Badge variant="secondary">{status}</Badge>
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground flex">
+      {/* Sidebar */}
+      <div className="w-64 border-r border-border bg-card p-4 space-y-4">
+        <div className="font-bold text-2xl tracking-tighter mb-8 text-primary">Codity Flow</div>
+        
+        <button onClick={() => setActiveTab('overview')} className={`flex items-center w-full space-x-2 px-3 py-2 rounded-lg transition-colors ${activeTab === 'overview' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'}`}>
+          <LayoutDashboard size={20} />
+          <span>Overview</span>
+        </button>
+        <button onClick={() => setActiveTab('queues')} className={`flex items-center w-full space-x-2 px-3 py-2 rounded-lg transition-colors ${activeTab === 'queues' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'}`}>
+          <ListTree size={20} />
+          <span>Queues</span>
+        </button>
+        <button onClick={() => setActiveTab('dlq')} className={`flex items-center w-full space-x-2 px-3 py-2 rounded-lg transition-colors ${activeTab === 'dlq' ? 'bg-destructive/10 text-destructive' : 'hover:bg-muted'}`}>
+          <Bug size={20} />
+          <span>Dead Letter</span>
+        </button>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 p-8 overflow-y-auto">
+        
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            <h1 className="text-3xl font-bold tracking-tight">Overview</h1>
+            
+            <div className="grid grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Total Jobs</CardDescription>
+                  <CardTitle className="text-4xl">{jobs.length}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Queued</CardDescription>
+                  <CardTitle className="text-4xl text-blue-500">{jobs.filter(j => j.status === 'QUEUED').length}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Completed</CardDescription>
+                  <CardTitle className="text-4xl text-emerald-500">{jobs.filter(j => j.status === 'COMPLETED').length}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Failed (DLQ)</CardDescription>
+                  <CardTitle className="text-4xl text-red-500">{jobs.filter(j => j.status === 'FAILED').length}</CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Activity</CardTitle>
+                <CardDescription>Live feed of job executions across all queues.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {jobs.slice(0, 10).map(job => (
+                    <div key={job.id} className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/20">
+                      <div>
+                        <div className="font-mono text-xs text-muted-foreground mb-1">{job.id}</div>
+                        <div className="font-semibold">{JSON.stringify(job.payload)}</div>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <div className="text-sm text-muted-foreground">Attempts: {job.attempts}/{job.max_retries}</div>
+                        {getStatusBadge(job.status)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {activeTab === 'queues' && (
+          <div className="space-y-6">
+            <h1 className="text-3xl font-bold tracking-tight">Queues</h1>
+            
+            <div className="grid grid-cols-2 gap-4">
+              {queues.map(queue => (
+                <Card key={queue.id}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>{queue.name}</CardTitle>
+                      <button 
+                        onClick={() => toggleQueue(queue)}
+                        className={`p-2 rounded-full transition-colors ${queue.is_paused ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/30' : 'bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/30'}`}
+                        title={queue.is_paused ? "Resume Queue" : "Pause Queue"}
+                      >
+                        {queue.is_paused ? <Play size={18} /> : <Pause size={18} />}
+                      </button>
+                    </div>
+                    <CardDescription>ID: {queue.id}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Concurrency:</span>
+                      <span className="font-mono">{queue.concurrency_limit}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Retry Strategy:</span>
+                      <Badge variant="outline" className="uppercase">{queue.retry_strategy}</Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Status:</span>
+                      {queue.is_paused ? <Badge variant="warning">PAUSED</Badge> : <Badge variant="success">ACTIVE</Badge>}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'dlq' && (
+          <div className="space-y-6">
+            <h1 className="text-3xl font-bold tracking-tight text-destructive">Dead Letter Queue</h1>
+            <p className="text-muted-foreground">Jobs that have exceeded their maximum retries and failed permanently.</p>
+            
+            <div className="space-y-4">
+              {dlqJobs.length === 0 && (
+                <div className="p-8 text-center text-muted-foreground border border-dashed rounded-lg">
+                  No dead letter jobs found.
+                </div>
+              )}
+              {dlqJobs.map(job => (
+                <Card key={job.id} className="border-destructive/50 overflow-hidden">
+                  <div className="bg-destructive/10 px-6 py-2 border-b border-destructive/20 flex justify-between items-center">
+                    <span className="font-mono text-sm font-semibold text-destructive">{job.job_id}</span>
+                    <span className="text-xs text-muted-foreground">{new Date(job.failed_at).toLocaleString()}</span>
+                  </div>
+                  <CardContent className="p-6 space-y-4">
+                    <div>
+                      <h4 className="text-sm font-semibold mb-1">Payload</h4>
+                      <pre className="bg-muted p-2 rounded text-xs overflow-x-auto">{job.payload}</pre>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold mb-1 text-destructive">Error Summary</h4>
+                      <p className="text-sm">{job.error_summary}</p>
+                    </div>
+                    {job.ai_failure_summary && (
+                      <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
+                        <h4 className="text-sm font-semibold mb-1 text-primary flex items-center">
+                          <Bug className="w-4 h-4 mr-1"/> AI Failure Analysis
+                        </h4>
+                        <p className="text-sm text-primary/90">{job.ai_failure_summary}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
