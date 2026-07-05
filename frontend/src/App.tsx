@@ -113,7 +113,7 @@ export default function App() {
               <Card>
                 <CardHeader className="pb-2">
                   <CardDescription>Queued</CardDescription>
-                  <CardTitle className="text-4xl text-blue-500">{jobs.filter(j => j.status === 'QUEUED').length}</CardTitle>
+                  <CardTitle className="text-4xl text-blue-500">{jobs.filter(j => ['QUEUED', 'SCHEDULED', 'CLAIMED', 'RUNNING'].includes(j.status)).length}</CardTitle>
                 </CardHeader>
               </Card>
               <Card>
