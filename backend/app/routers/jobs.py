@@ -6,13 +6,15 @@ import uuid
 from typing import List
 
 from app.database import get_db
-from app.models import Job, Queue, JobStatus
-from app.schemas import JobCreate, JobResponse, JobStatusResponse, BatchJobCreate
+from app.models import Job, Queue, JobStatus, ScheduledJob
+from app.schemas import JobCreate, JobResponse, JobStatusResponse, BatchJobCreate, ScheduledJobCreate, ScheduledJobResponse
+
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 @router.post("/", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
-async def create_job(job: JobCreate, db: AsyncSession = Depends(get_db)):
+async def create_job(job: JobCreate, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
     queue_query = await db.execute(select(Queue).where(Queue.id == job.queue_id))
     if not queue_query.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Queue not found")
@@ -31,7 +33,7 @@ async def create_job(job: JobCreate, db: AsyncSession = Depends(get_db)):
     return new_job
 
 @router.post("/batch", response_model=List[JobResponse], status_code=status.HTTP_201_CREATED)
-async def create_batch_jobs(batch: BatchJobCreate, db: AsyncSession = Depends(get_db)):
+async def create_batch_jobs(batch: BatchJobCreate, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
     if not batch.jobs:
         return []
     
@@ -90,7 +92,28 @@ async def get_dlq(db: AsyncSession = Depends(get_db)):
         } for r in rows
     ]
 
-@router.get("/queue/{queue_id}", response_model=List[JobStatusResponse])
+@router.post("/scheduled", response_model=ScheduledJobResponse, status_code=status.HTTP_201_CREATED)
+async def create_scheduled_job(job: ScheduledJobCreate, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
+    import croniter
+    if not croniter.croniter.is_valid(job.cron_expression):
+        raise HTTPException(status_code=400, detail="Invalid cron expression")
+        
+    queue_query = await db.execute(select(Queue).where(Queue.id == job.queue_id))
+    if not queue_query.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Queue not found")
+        
+    new_job = ScheduledJob(
+        id=str(uuid.uuid4()),
+        queue_id=job.queue_id,
+        cron_expression=job.cron_expression,
+        payload=job.payload
+    )
+    db.add(new_job)
+    await db.commit()
+    await db.refresh(new_job)
+    return new_job
+
+@router.get("/queue/{queue_id}", response_model=List[JobResponse])
 async def get_jobs_for_queue(queue_id: str, limit: int = 20, db: AsyncSession = Depends(get_db)):
     job_query = await db.execute(
         select(Job)

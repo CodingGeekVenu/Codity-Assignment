@@ -6,9 +6,12 @@ from app.models import JobStatus
 
 @pytest.fixture
 async def async_client():
+    from app.routers.auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: "testuser"
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+    app.dependency_overrides.clear()
 
 @pytest.fixture
 async def setup_org():

@@ -10,18 +10,8 @@ from sqlalchemy.orm import sessionmaker
 from app.models import JobStatus, RetryStrategy, Base, Job, Queue, Project, Organization, Worker, WorkerHeartbeat
 from app.config import settings
 
-import pytest_asyncio
-
 from app.database import engine, AsyncSessionLocal
-
 import pytest_asyncio
-
-@pytest_asyncio.fixture(loop_scope="session", autouse=True)
-async def setup_test_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield
-    # Cleanup logic can go here (truncate tables instead of drop to keep schema)
 
 @pytest_asyncio.fixture(loop_scope="function", autouse=True)
 async def clear_db():

@@ -18,6 +18,15 @@ export default function App() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // 0. Auto-Login
+        const formData = new URLSearchParams()
+        formData.append('username', 'admin')
+        formData.append('password', 'admin')
+        const authRes = await axios.post(`${API_BASE}/auth/token`, formData, {
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+        })
+        axios.defaults.headers.common['Authorization'] = `Bearer ${authRes.data.access_token}`
+
         // 1. Fetch Projects
         let projRes = await axios.get(`${API_BASE}/projects/`)
         let project_id = projRes.data.length > 0 ? projRes.data[0].id : null

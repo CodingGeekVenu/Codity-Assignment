@@ -55,3 +55,17 @@ class JobStatusResponse(BaseModel):
 
 class BatchJobCreate(BaseModel):
     jobs: List[JobCreate]
+
+class ScheduledJobCreate(BaseModel):
+    queue_id: str
+    cron_expression: str
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+class ScheduledJobResponse(ScheduledJobCreate):
+    id: str
+    is_active: bool
+    next_run_at: Optional[datetime]
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True

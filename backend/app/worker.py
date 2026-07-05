@@ -179,14 +179,63 @@ class JobWorker:
                 logger.error(f"Error during claim loop: {e}")
                 await asyncio.sleep(1)
 
+    async def cron_loop(self):
+        """
+        Polls the scheduled_jobs table every 60 seconds and creates new jobs
+        if the cron expression indicates it is time to run.
+        """
+        import croniter
+        while not self.is_shutting_down:
+            try:
+                async with AsyncSessionLocal() as session:
+                    # Fetch all active scheduled jobs
+                    result = await session.execute(text("SELECT id, queue_id, cron_expression, payload, next_run_at FROM scheduled_jobs WHERE is_active = true"))
+                    schedules = result.fetchall()
+                    
+                    now = datetime.utcnow()
+                    
+                    for schedule in schedules:
+                        # If next_run_at is empty or we've passed it, it's time to run
+                        if not schedule.next_run_at or now >= schedule.next_run_at:
+                            # 1. Insert a new job into the queue
+                            import json
+                            job_payload = json.dumps(schedule.payload) if schedule.payload else "{}"
+                            await session.execute(
+                                text("INSERT INTO jobs (id, queue_id, payload, priority, status) VALUES (:id, :qid, :payload, 1, 'QUEUED')"),
+                                {"id": str(uuid.uuid4()), "qid": schedule.queue_id, "payload": job_payload}
+                            )
+                            
+                            # 2. Calculate next run time
+                            if croniter.croniter.is_valid(schedule.cron_expression):
+                                cron = croniter.croniter(schedule.cron_expression, now)
+                                next_run = cron.get_next(datetime)
+                                
+                                await session.execute(
+                                    text("UPDATE scheduled_jobs SET next_run_at = :next_run WHERE id = :id"),
+                                    {"next_run": next_run, "id": schedule.id}
+                                )
+                                logger.info(f"Cron Job triggered for schedule {schedule.id}. Next run at {next_run}")
+                            else:
+                                logger.error(f"Invalid cron expression: {schedule.cron_expression}")
+                    
+                    await session.commit()
+            except Exception as e:
+                logger.error(f"Error in cron_loop: {e}")
+            
+            # Sleep 60s
+            for _ in range(60):
+                if self.is_shutting_down: break
+                await asyncio.sleep(1)
+
     async def run(self):
         await self.startup()
         
         heartbeat_task = asyncio.create_task(self.heartbeat_loop())
         reaper_task = asyncio.create_task(self.reaper_loop())
+        cron_task = asyncio.create_task(self.cron_loop())
         worker_task = asyncio.create_task(self.claim_and_execute())
         
-        await asyncio.gather(heartbeat_task, reaper_task, worker_task)
+        await asyncio.gather(heartbeat_task, reaper_task, cron_task, worker_task)
 
     def trigger_graceful_shutdown(self):
         logger.info("SIGTERM received. Triggering graceful shutdown. Waiting for current job to finish...")

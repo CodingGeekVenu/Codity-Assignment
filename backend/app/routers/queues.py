@@ -8,10 +8,12 @@ from app.database import get_db
 from app.models import Queue, Project, RetryPolicy
 from app.schemas import QueueCreate, QueueResponse, QueueUpdate
 
+from app.routers.auth import get_current_user
+
 router = APIRouter(prefix="/queues", tags=["queues"])
 
 @router.post("/", response_model=QueueResponse, status_code=status.HTTP_201_CREATED)
-async def create_queue(queue: QueueCreate, db: AsyncSession = Depends(get_db)):
+async def create_queue(queue: QueueCreate, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
     project_query = await db.execute(select(Project).where(Project.id == queue.project_id))
     if not project_query.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Project not found")
@@ -40,6 +42,14 @@ async def create_queue(queue: QueueCreate, db: AsyncSession = Depends(get_db)):
         "retry_strategy": queue.retry_strategy
     }
     return new_queue_dict
+
+@router.put("/{queue_id}/pause", response_model=QueueResponse)
+async def pause_queue(queue_id: str, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
+    return await toggle_queue_pause(queue_id, True, db)
+
+@router.put("/{queue_id}/resume", response_model=QueueResponse)
+async def resume_queue(queue_id: str, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
+    return await toggle_queue_pause(queue_id, False, db)
 
 @router.get("/", response_model=List[QueueResponse])
 async def list_queues(project_id: str, db: AsyncSession = Depends(get_db)):

@@ -8,10 +8,12 @@ from app.database import get_db
 from app.models import Project, Organization
 from app.schemas import ProjectCreate, ProjectResponse
 
+from app.routers.auth import get_current_user
+
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 @router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
-async def create_project(project: ProjectCreate, db: AsyncSession = Depends(get_db)):
+async def create_project(project: ProjectCreate, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
     # Check if org exists (optional but good practice)
     org_query = await db.execute(select(Organization).where(Organization.id == project.organization_id))
     if not org_query.scalar_one_or_none():
@@ -28,7 +30,7 @@ async def create_project(project: ProjectCreate, db: AsyncSession = Depends(get_
     return new_project
 
 @router.post("/organizations/", status_code=status.HTTP_201_CREATED)
-async def create_organization(name: str, db: AsyncSession = Depends(get_db)):
+async def create_organization(name: str, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
     new_org = Organization(id=str(uuid.uuid4()), name=name)
     db.add(new_org)
     await db.commit()
