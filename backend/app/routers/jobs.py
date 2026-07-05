@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 import uuid
-from typing import List
+from typing import List, Optional
 
 from app.database import get_db
 from app.models import Job, Queue, JobStatus, ScheduledJob
@@ -114,11 +114,11 @@ async def create_scheduled_job(job: ScheduledJobCreate, db: AsyncSession = Depen
     return new_job
 
 @router.get("/queue/{queue_id}", response_model=List[JobResponse])
-async def get_jobs_for_queue(queue_id: str, limit: int = 20, db: AsyncSession = Depends(get_db)):
-    job_query = await db.execute(
-        select(Job)
-        .where(Job.queue_id == queue_id)
-        .order_by(Job.created_at.desc())
-        .limit(limit)
-    )
+async def get_jobs_for_queue(queue_id: str, skip: int = 0, limit: int = 20, status_filter: Optional[JobStatus] = None, db: AsyncSession = Depends(get_db)):
+    query = select(Job).where(Job.queue_id == queue_id)
+    if status_filter:
+        query = query.where(Job.status == status_filter)
+        
+    query = query.order_by(Job.created_at.desc()).offset(skip).limit(limit)
+    job_query = await db.execute(query)
     return job_query.scalars().all()
