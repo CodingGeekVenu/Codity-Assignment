@@ -59,6 +59,27 @@ async def test_projects_queues_jobs_flow(async_client: AsyncClient, setup_org):
     assert get_job_response.json()["status"] == JobStatus.QUEUED.value
 
 @pytest.mark.asyncio
+async def test_auth_rejection(setup_org):
+    from app.main import app
+    from httpx import AsyncClient, ASGITransport
+    from app.routers.auth import get_current_user
+    
+    # Store and remove the global override to test actual auth
+    original_override = app.dependency_overrides.get(get_current_user)
+    if get_current_user in app.dependency_overrides:
+        del app.dependency_overrides[get_current_user]
+        
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.post("/projects/", json={"name": "Unauthorized Project", "organization_id": setup_org})
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Not authenticated"
+        
+    # Restore the override for other tests
+    if original_override:
+        app.dependency_overrides[get_current_user] = original_override
+
+@pytest.mark.asyncio
 async def test_queue_pause_resume(async_client: AsyncClient, setup_org):
     org_id = setup_org
     proj_res = await async_client.post("/projects/", json={"name": "Queue Test", "organization_id": org_id})
