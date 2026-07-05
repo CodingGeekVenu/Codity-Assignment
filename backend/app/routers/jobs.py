@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from app.database import get_db
 from app.models import Job, Queue, JobStatus, ScheduledJob
-from app.schemas import JobCreate, JobResponse, JobStatusResponse, BatchJobCreate, ScheduledJobCreate, ScheduledJobResponse
+from app.schemas import JobCreate, JobResponse, JobStatusResponse, BatchJobCreate, ScheduledJobCreate, ScheduledJobResponse, JobLogResponse
 
 from app.routers.auth import get_current_user
 
@@ -122,3 +122,36 @@ async def get_jobs_for_queue(queue_id: str, skip: int = 0, limit: int = 20, stat
     query = query.order_by(Job.created_at.desc()).offset(skip).limit(limit)
     job_query = await db.execute(query)
     return job_query.scalars().all()
+
+@router.get("/{job_id}/logs", response_model=List[JobLogResponse])
+async def get_job_logs(job_id: str, db: AsyncSession = Depends(get_db)):
+    from app.models import JobLog
+    query = select(JobLog).where(JobLog.job_id == job_id).order_by(JobLog.created_at.asc())
+    result = await db.execute(query)
+    return result.scalars().all()
+
+@router.post("/{job_id}/retry", response_model=JobResponse)
+async def retry_job(job_id: str, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
+    from sqlalchemy import text
+    # Fetch job to verify it's FAILED or in DLQ
+    job_query = await db.execute(select(Job).where(Job.id == job_id))
+    job = job_query.scalar_one_or_none()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    if job.status != JobStatus.FAILED:
+        raise HTTPException(status_code=400, detail="Only FAILED jobs can be retried manually")
+        
+    # Reset job
+    job.status = JobStatus.QUEUED
+    job.attempts = 0
+    job.scheduled_at = None
+    job.claimed_by = None
+    
+    # Remove from DLQ if it was there
+    await db.execute(text("DELETE FROM dead_letter_queue WHERE job_id = :jid"), {"jid": job_id})
+    
+    await db.commit()
+    await db.refresh(job)
+    return job

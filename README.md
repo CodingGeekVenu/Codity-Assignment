@@ -3,61 +3,68 @@
 This repository contains the backend and frontend for the Distributed Job Scheduler assignment.
 
 ## Tech Stack
-- **Backend:** Python 3, FastAPI, PostgreSQL, SQLAlchemy (asyncpg), Google Gemini AI SDK.
-- **Frontend:** React, Vite, TypeScript, Tailwind CSS, Shadcn UI.
-- **Infrastructure:** Docker (for PostgreSQL).
+- **Backend:** Python 3.10+, FastAPI, PostgreSQL, SQLAlchemy (asyncpg), Google Gemini AI SDK.
+- **Frontend:** React 19, Vite, TypeScript, Tailwind CSS, Shadcn UI.
 
 ## Features Implemented
-1. **Concurrency and Scaling:** Designed with `SELECT ... FOR UPDATE SKIP LOCKED` in PostgreSQL for atomic job locking, allowing 50+ concurrent workers without overlapping executions.
-2. **Reliability & Retry Strategy:** Backoff mechanisms for `FIXED`, `LINEAR`, and `EXPONENTIAL` retry strategies.
-3. **Dead Letter Queue & AI Failure Analysis:** Failed jobs after max retries enter the DLQ. We integrated Google Gemini AI 2.5 Flash to generate 1-2 sentence root-cause analyses on failure payloads.
-4. **Performance:** Achieved <10ms queue overhead per job assignment. Concurrency tests run 1000 jobs across 50 workers successfully without race conditions.
-5. **Modern Dashboard:** React-based dashboard polling the API every 3s to reflect live job queues, queue toggling (pause/resume), and detailed DLQ viewer with AI failure summaries.
+1. **Concurrency and Scaling:** Designed with `SELECT ... FOR UPDATE SKIP LOCKED` in PostgreSQL for atomic job locking, allowing multiple concurrent workers without overlapping executions or deadlocks.
+2. **Reliability & Retry Strategy:** Built-in backoff mechanisms for `FIXED`, `LINEAR`, and `EXPONENTIAL` retry strategies natively integrated into the queue definitions.
+3. **Dead Letter Queue (DLQ):** Failed jobs after max retries enter the DLQ permanently. Features a fully functional 1-click **Retry** button in the dashboard that restores them to the active queues.
+4. **AI Failure Analysis:** We integrated Google Gemini AI 2.5 Flash to automatically analyze failure payloads in the DLQ and generate natural-language root-cause analyses on failure payloads.
+5. **Worker Heartbeats:** Live tracking of all background workers processing jobs, with active status polling.
+6. **Execution Logs:** The system natively captures and surfaces complete execution logs of every job attempt and failure stack trace.
+7. **Modern Dashboard:** React-based dashboard polling the API every 3s to reflect live job queues, queue toggling (pause/resume), worker heartbeat tracking, logs terminal, and a detailed DLQ viewer.
+
+## Project Structure
+- `/backend`: The FastAPI application, API routers, database schemas, migration tools, background worker scripts, and rigorous pytest suite.
+- `/frontend`: The Vite+React TSX application.
+- `/docs`: Contains the final `Codity_Submission.md` covering architecture, scheme, and feature design details.
 
 ## Getting Started
 
 ### 1. Database Setup
-```bash
-docker-compose up -d
-```
-This runs PostgreSQL on port `5432` with user `jobuser`, password `jobpassword`, DB `job_scheduler`.
-
-### 2. Backend Setup
-Create a virtual environment, install dependencies, and run migrations:
+Create a local PostgreSQL database, then initialize it:
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt # (if added) or pip install fastapi uvicorn asyncpg sqlalchemy google-genai pytest httpx
-alembic upgrade head
+.\venv\Scripts\activate
+pip install -r requirements.txt
+set DATABASE_URL=postgresql+asyncpg://jobuser:jobpassword@localhost:5432/job_scheduler
+set SYNC_DATABASE_URL=postgresql://jobuser:jobpassword@localhost:5432/job_scheduler
+python init_db.py
 ```
 
-Create a `.env` file in the `backend` directory:
-```env
-DATABASE_URL=postgresql+asyncpg://jobuser:jobpassword@localhost:5432/job_scheduler
-GEMINI_API_KEY=your_api_key_here
-```
-
-Start the API and Background Worker (in separate terminals):
+### 2. Start the Backend API
 ```bash
 uvicorn app.main:app --reload
+```
+
+### 3. Start the Background Worker
+In a new terminal:
+```bash
+cd backend
+.\venv\Scripts\activate
+set DATABASE_URL=postgresql+asyncpg://jobuser:jobpassword@localhost:5432/job_scheduler
+set GEMINI_API_KEY=your_key_here
 python -m app.worker
 ```
 
-### 3. Frontend Setup
+### 4. Start the Frontend Dashboard
+In a new terminal:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Open `http://localhost:5173` to view the dashboard.
 
-## Tests
-To run API and Worker concurrency tests:
+### 5. Running the Automated Tests
+The `pytest` suite tests authentication, queue creation, job processing, and strictly tests concurrency against 50 parallel workers fighting for jobs.
 ```bash
 cd backend
-venv\Scripts\activate
-set DATABASE_URL=postgresql+asyncpg://jobuser:jobpassword@localhost:5432/job_scheduler
-set SYNC_DATABASE_URL=postgresql://jobuser:jobpassword@localhost:5432/job_scheduler
-pytest tests/
+python -m pytest tests/
+```
+
+To see the system run live, start the backend and worker, then run:
+```bash
+python test_workflow.py
 ```

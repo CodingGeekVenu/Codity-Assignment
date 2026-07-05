@@ -107,6 +107,7 @@ class Job(Base):
 
     queue = relationship("Queue", back_populates="jobs")
     executions = relationship("JobExecution", back_populates="job", cascade="all, delete-orphan")
+    logs = relationship("JobLog", back_populates="job", cascade="all, delete-orphan")
 
 class Worker(Base):
     __tablename__ = "workers"
@@ -141,17 +142,16 @@ class JobExecution(Base):
     error_message = Column(Text, nullable=True)
 
     job = relationship("Job", back_populates="executions")
-    logs = relationship("JobLog", back_populates="execution", cascade="all, delete-orphan")
 
 class JobLog(Base):
     __tablename__ = "job_logs"
     id = Column(String, primary_key=True, default=generate_uuid)
-    execution_id = Column(String, ForeignKey("job_executions.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(String, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True)
     log_level = Column(String, default="INFO")
     message = Column(Text, nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-    execution = relationship("JobExecution", back_populates="logs")
+    job = relationship("Job", back_populates="logs")
 
 class DeadLetterQueue(Base):
     __tablename__ = "dead_letter_queue"

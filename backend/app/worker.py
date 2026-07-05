@@ -113,6 +113,13 @@ class JobWorker:
                     if job:
                         logger.info(f"Worker {self.worker_id} claimed job {job.id}")
                         
+                        # Log job start
+                        log_id_start = str(uuid.uuid4())
+                        await session.execute(
+                            text("INSERT INTO job_logs (id, job_id, message, created_at) VALUES (:id, :jid, :msg, NOW())"),
+                            {"id": log_id_start, "jid": job.id, "msg": f"Job claimed by worker {self.worker_id} and execution started."}
+                        )
+                        
                         # Execute Job (Simulated)
                         try:
                             await asyncio.sleep(0.5) 
@@ -123,9 +130,23 @@ class JobWorker:
                                 
                             logger.info(f"Job {job.id} completed successfully.")
                             await session.execute(text("UPDATE jobs SET status = 'COMPLETED' WHERE id = :id"), {"id": job.id})
+                            
+                            # Log success
+                            log_id_end = str(uuid.uuid4())
+                            await session.execute(
+                                text("INSERT INTO job_logs (id, job_id, message, created_at) VALUES (:id, :jid, :msg, NOW())"),
+                                {"id": log_id_end, "jid": job.id, "msg": "Job completed successfully."}
+                            )
                             await session.commit()
                         except Exception as execution_error:
                             logger.error(f"Job {job.id} failed: {execution_error}")
+                            
+                            # Log failure
+                            log_id_fail = str(uuid.uuid4())
+                            await session.execute(
+                                text("INSERT INTO job_logs (id, job_id, message, created_at) VALUES (:id, :jid, :msg, NOW())"),
+                                {"id": log_id_fail, "jid": job.id, "msg": f"Job failed with error: {str(execution_error)}"}
+                            )
                             
                             # Fetch queue config for retry strategy
                             queue_res = await session.execute(

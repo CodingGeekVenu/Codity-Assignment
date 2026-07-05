@@ -1,0 +1,51 @@
+erDiagram
+    ORGANIZATION ||--o{ PROJECT : contains
+    PROJECT ||--o{ QUEUE : manages
+    QUEUE ||--o{ JOB : contains
+    QUEUE ||--|| RETRY_POLICY : has
+    JOB ||--|{ DEAD_LETTER_QUEUE : "moves to on max retries"
+    WORKER ||--o{ JOB : claims
+
+    ORGANIZATION {
+        uuid id PK
+        string name
+    }
+    PROJECT {
+        uuid id PK
+        string name
+        uuid organization_id FK
+    }
+    QUEUE {
+        uuid id PK
+        string name
+        uuid project_id FK
+        uuid retry_policy_id FK
+        boolean is_paused
+    }
+    RETRY_POLICY {
+        uuid id PK
+        string strategy
+    }
+    JOB {
+        uuid id PK
+        uuid queue_id FK
+        jsonb payload
+        string status
+        int priority
+        int attempts
+        int max_retries
+        timestamp scheduled_at
+        uuid claimed_by FK
+    }
+    WORKER {
+        uuid id PK
+        string hostname
+        timestamp last_heartbeat
+    }
+    DEAD_LETTER_QUEUE {
+        uuid id PK
+        uuid job_id FK
+        uuid queue_id FK
+        string error_summary
+        string ai_failure_summary
+    }

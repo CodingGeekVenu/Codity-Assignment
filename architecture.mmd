@@ -1,0 +1,9 @@
+graph TD
+    Client[Frontend Dashboard React] -->|REST API HTTP| FastAPI[Backend FastAPI]
+    FastAPI -->|Write Jobs/Queues| Postgres[(PostgreSQL)]
+    
+    Worker1[Python Worker 1] -->|Poll & Claim SKIP LOCKED| Postgres
+    Worker2[Python Worker 2] -->|Poll & Claim SKIP LOCKED| Postgres
+    
+    Worker1 -.->|API Call on Failure| Gemini[Google Gemini AI]
+    Worker2 -.->|API Call on Failure| Gemini

@@ -69,3 +69,21 @@ class ScheduledJobResponse(ScheduledJobCreate):
     
     class Config:
         from_attributes = True
+
+class WorkerResponse(BaseModel):
+    id: str
+    hostname: str
+    last_heartbeat: datetime
+    status: str
+    
+    class Config:
+        from_attributes = True
+
+class JobLogResponse(BaseModel):
+    id: str
+    job_id: str
+    message: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True

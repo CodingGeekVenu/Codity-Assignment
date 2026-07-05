@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import jobs, queues, projects, auth
+from app.routers import jobs, queues, projects, auth, workers
 
 app = FastAPI(
     title="Distributed Job Scheduler API",
@@ -21,6 +21,7 @@ app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(queues.router)
 app.include_router(jobs.router)
+app.include_router(workers.router)
 
 @app.get("/")
 async def root():

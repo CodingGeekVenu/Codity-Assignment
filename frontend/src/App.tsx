@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, ListTree, Bug, Play, Pause } from 'lucide-react'
+import { LayoutDashboard, ListTree, Bug, Play, Pause, Server, RotateCw, FileText } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import axios from 'axios'
@@ -13,6 +13,9 @@ export default function App() {
   const [jobs, setJobs] = useState<any[]>([])
 
   const [dlqJobs, setDlqJobs] = useState<any[]>([])
+  const [workers, setWorkers] = useState<any[]>([])
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
+  const [jobLogs, setJobLogs] = useState<any[]>([])
 
   // Polling logic
   useEffect(() => {
@@ -57,6 +60,10 @@ export default function App() {
         // 5. Fetch DLQ
         const dlqRes = await axios.get(`${API_BASE}/jobs/dlq/all`)
         setDlqJobs(dlqRes.data)
+
+        // 6. Fetch Workers
+        const workersRes = await axios.get(`${API_BASE}/workers/`)
+        setWorkers(workersRes.data)
       } catch (err) {
         console.error("Polling error", err)
       }
@@ -72,6 +79,30 @@ export default function App() {
       await axios.patch(`${API_BASE}/queues/${queue.id}`, { is_paused: !queue.is_paused })
     } catch (e) {
       console.error("Failed to toggle queue", e)
+    }
+  }
+
+  const retryDlqJob = async (jobId: string) => {
+    try {
+      await axios.post(`${API_BASE}/jobs/${jobId}/retry`)
+      // Optimistically remove from DLQ list
+      setDlqJobs(dlqJobs.filter(j => j.job_id !== jobId))
+    } catch (e) {
+      console.error("Failed to retry job", e)
+    }
+  }
+
+  const toggleJobLogs = async (jobId: string) => {
+    if (expandedJobId === jobId) {
+      setExpandedJobId(null)
+      return
+    }
+    setExpandedJobId(jobId)
+    try {
+      const logsRes = await axios.get(`${API_BASE}/jobs/${jobId}/logs`)
+      setJobLogs(logsRes.data)
+    } catch (e) {
+      console.error("Failed to fetch logs", e)
     }
   }
 
@@ -102,6 +133,10 @@ export default function App() {
         <button onClick={() => setActiveTab('dlq')} className={`flex items-center w-full space-x-2 px-3 py-2 rounded-lg transition-colors ${activeTab === 'dlq' ? 'bg-destructive/10 text-destructive' : 'hover:bg-muted'}`}>
           <Bug size={20} />
           <span>Dead Letter</span>
+        </button>
+        <button onClick={() => setActiveTab('workers')} className={`flex items-center w-full space-x-2 px-3 py-2 rounded-lg transition-colors ${activeTab === 'workers' ? 'bg-indigo-500/10 text-indigo-500' : 'hover:bg-muted'}`}>
+          <Server size={20} />
+          <span>Workers</span>
         </button>
       </div>
 
@@ -147,15 +182,44 @@ export default function App() {
               <CardContent>
                 <div className="space-y-4">
                   {jobs.slice(0, 10).map(job => (
-                    <div key={job.id} className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/20">
-                      <div>
-                        <div className="font-mono text-xs text-muted-foreground mb-1">{job.id}</div>
-                        <div className="font-semibold">{JSON.stringify(job.payload)}</div>
+                    <div key={job.id} className="flex flex-col p-4 border border-border rounded-lg bg-muted/20">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-mono text-xs text-muted-foreground mb-1">{job.id}</div>
+                          <div className="font-semibold">{JSON.stringify(job.payload)}</div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                          <div className="text-sm text-muted-foreground">Attempts: {job.attempts}/{job.max_retries}</div>
+                          {getStatusBadge(job.status)}
+                          <button 
+                            onClick={() => toggleJobLogs(job.id)}
+                            className="p-1.5 rounded bg-secondary hover:bg-secondary/80 text-secondary-foreground"
+                            title="View Logs"
+                          >
+                            <FileText size={16} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-4">
-                        <div className="text-sm text-muted-foreground">Attempts: {job.attempts}/{job.max_retries}</div>
-                        {getStatusBadge(job.status)}
-                      </div>
+                      
+                      {expandedJobId === job.id && (
+                        <div className="mt-4 pt-4 border-t border-border">
+                          <h4 className="text-sm font-semibold mb-2 flex items-center">
+                            <FileText className="w-4 h-4 mr-2" /> Execution Logs
+                          </h4>
+                          {jobLogs.length === 0 ? (
+                            <div className="text-xs text-muted-foreground">No logs available for this job.</div>
+                          ) : (
+                            <div className="bg-black/90 text-green-400 p-3 rounded text-xs font-mono max-h-40 overflow-y-auto space-y-1">
+                              {jobLogs.map(log => (
+                                <div key={log.id} className="flex space-x-3">
+                                  <span className="text-gray-500 w-32 shrink-0">{new Date(log.created_at).toISOString().replace('T', ' ').substring(0, 19)}</span>
+                                  <span>{log.message}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -219,7 +283,16 @@ export default function App() {
                 <Card key={job.id} className="border-destructive/50 overflow-hidden">
                   <div className="bg-destructive/10 px-6 py-2 border-b border-destructive/20 flex justify-between items-center">
                     <span className="font-mono text-sm font-semibold text-destructive">{job.job_id}</span>
-                    <span className="text-xs text-muted-foreground">{new Date(job.failed_at).toLocaleString()}</span>
+                    <div className="flex items-center space-x-4">
+                      <span className="text-xs text-muted-foreground">{new Date(job.failed_at).toLocaleString()}</span>
+                      <button 
+                        onClick={() => retryDlqJob(job.job_id)}
+                        className="flex items-center space-x-1 px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
+                      >
+                        <RotateCw size={12} />
+                        <span>Retry</span>
+                      </button>
+                    </div>
                   </div>
                   <CardContent className="p-6 space-y-4">
                     <div>
@@ -241,6 +314,46 @@ export default function App() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'workers' && (
+          <div className="space-y-6">
+            <h1 className="text-3xl font-bold tracking-tight flex items-center">
+              <Server className="w-8 h-8 mr-3 text-indigo-500" /> Worker Monitoring
+            </h1>
+            <p className="text-muted-foreground">Live overview of active background worker nodes processing queues.</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {workers.map(worker => (
+                <Card key={worker.id} className="border-indigo-500/20">
+                  <CardHeader className="bg-indigo-500/5 pb-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{worker.hostname}</CardTitle>
+                        <CardDescription className="font-mono text-xs mt-1">{worker.id.substring(0, 8)}...</CardDescription>
+                      </div>
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Last Heartbeat</span>
+                      <span className="font-medium">{new Date(worker.last_heartbeat).toLocaleTimeString()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Status</span>
+                      <Badge variant="outline" className="text-emerald-500 border-emerald-500/30">ONLINE</Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {workers.length === 0 && (
+                <div className="col-span-full p-8 text-center text-muted-foreground border border-dashed rounded-lg">
+                  No active workers detected. Start the worker process to see it here.
+                </div>
+              )}
             </div>
           </div>
         )}
