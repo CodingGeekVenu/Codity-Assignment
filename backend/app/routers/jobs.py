@@ -89,3 +89,13 @@ async def get_dlq(db: AsyncSession = Depends(get_db)):
             "failed_at": r.failed_at.isoformat() if r.failed_at else None
         } for r in rows
     ]
+
+@router.get("/queue/{queue_id}", response_model=List[JobStatusResponse])
+async def get_jobs_for_queue(queue_id: str, limit: int = 20, db: AsyncSession = Depends(get_db)):
+    job_query = await db.execute(
+        select(Job)
+        .where(Job.queue_id == queue_id)
+        .order_by(Job.created_at.desc())
+        .limit(limit)
+    )
+    return job_query.scalars().all()

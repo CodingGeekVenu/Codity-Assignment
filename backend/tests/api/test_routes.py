@@ -54,3 +54,45 @@ async def test_projects_queues_jobs_flow(async_client: AsyncClient, setup_org):
     assert get_job_response.status_code == 200
     assert get_job_response.json()["id"] == job_id
     assert get_job_response.json()["status"] == JobStatus.QUEUED.value
+
+@pytest.mark.asyncio
+async def test_queue_pause_resume(async_client: AsyncClient, setup_org):
+    org_id = setup_org
+    proj_res = await async_client.post("/projects/", json={"name": "Queue Test", "organization_id": org_id})
+    project_id = proj_res.json()["id"]
+    
+    # Create queue
+    q_res = await async_client.post("/queues/", json={"name": "P Q", "project_id": project_id, "retry_strategy": "fixed"})
+    q_id = q_res.json()["id"]
+    
+    # Pause queue
+    pause_res = await async_client.patch(f"/queues/{q_id}", json={"is_paused": True})
+    assert pause_res.status_code == 200
+    assert pause_res.json()["is_paused"] == True
+    
+    # Resume queue
+    resume_res = await async_client.patch(f"/queues/{q_id}", json={"is_paused": False})
+    assert resume_res.status_code == 200
+    assert resume_res.json()["is_paused"] == False
+
+@pytest.mark.asyncio
+async def test_batch_jobs_and_validation(async_client: AsyncClient, setup_org):
+    org_id = setup_org
+    proj_res = await async_client.post("/projects/", json={"name": "Batch Test", "organization_id": org_id})
+    project_id = proj_res.json()["id"]
+    q_res = await async_client.post("/queues/", json={"name": "B Q", "project_id": project_id, "retry_strategy": "fixed"})
+    q_id = q_res.json()["id"]
+    
+    # Batch Insert
+    batch_res = await async_client.post("/jobs/batch", json={
+        "jobs": [
+            {"queue_id": q_id, "payload": {"t": 1}},
+            {"queue_id": q_id, "payload": {"t": 2}}
+        ]
+    })
+    assert batch_res.status_code == 201
+    assert len(batch_res.json()) == 2
+    
+    # Validation Error (Missing queue_id)
+    bad_job_res = await async_client.post("/jobs/", json={"priority": 1})
+    assert bad_job_res.status_code == 422

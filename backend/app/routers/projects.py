@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
-from typing import List
+from typing import List, Optional
 
 from app.database import get_db
 from app.models import Project, Organization
@@ -27,7 +27,18 @@ async def create_project(project: ProjectCreate, db: AsyncSession = Depends(get_
     await db.refresh(new_project)
     return new_project
 
+@router.post("/organizations/", status_code=status.HTTP_201_CREATED)
+async def create_organization(name: str, db: AsyncSession = Depends(get_db)):
+    new_org = Organization(id=str(uuid.uuid4()), name=name)
+    db.add(new_org)
+    await db.commit()
+    await db.refresh(new_org)
+    return {"id": new_org.id, "name": new_org.name}
+
 @router.get("/", response_model=List[ProjectResponse])
-async def list_projects(organization_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Project).where(Project.organization_id == organization_id))
+async def list_projects(organization_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    if organization_id:
+        result = await db.execute(select(Project).where(Project.organization_id == organization_id))
+    else:
+        result = await db.execute(select(Project))
     return result.scalars().all()

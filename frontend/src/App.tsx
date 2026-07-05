@@ -18,12 +18,25 @@ export default function App() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [qRes] = await Promise.all([
-          axios.get(`${API_BASE}/queues/?project_id=${DEFAULT_PROJ_ID}`)
-        ])
+        // 1. Fetch Projects
+        let projRes = await axios.get(`${API_BASE}/projects/`)
+        let project_id = projRes.data.length > 0 ? projRes.data[0].id : null
+
+        // 2. If no project exists, idempotently create a default org and project
+        if (!project_id) {
+            console.log("No projects found, initializing defaults...")
+            const orgRes = await axios.post(`${API_BASE}/projects/organizations/?name=Default Org`)
+            const newProjRes = await axios.post(`${API_BASE}/projects/`, { name: "Default Project", organization_id: orgRes.data.id })
+            project_id = newProjRes.data.id
+            // Also create a default queue
+            await axios.post(`${API_BASE}/queues/`, { name: "Default Queue", project_id: project_id, retry_strategy: "fixed" })
+        }
+
+        // 3. Fetch Queues for the active project
+        const qRes = await axios.get(`${API_BASE}/queues/?project_id=${project_id}`)
         setQueues(qRes.data)
         
-        // Fetch jobs for each queue
+        // 4. Fetch jobs for each queue
         let allJobs: any[] = []
         for (const q of qRes.data) {
           const res = await axios.get(`${API_BASE}/jobs/queue/${q.id}?limit=20`)
@@ -32,7 +45,7 @@ export default function App() {
         allJobs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         setJobs(allJobs)
 
-        // Fetch DLQ
+        // 5. Fetch DLQ
         const dlqRes = await axios.get(`${API_BASE}/jobs/dlq/all`)
         setDlqJobs(dlqRes.data)
       } catch (err) {
