@@ -215,7 +215,7 @@ export default function App() {
                   <CardContent className="p-6 space-y-4">
                     <div>
                       <h4 className="text-sm font-semibold mb-1">Payload</h4>
-                      <pre className="bg-muted p-2 rounded text-xs overflow-x-auto">{job.payload}</pre>
+                      <pre className="bg-muted p-2 rounded text-xs overflow-x-auto">{JSON.stringify(job.payload, null, 2)}</pre>
                     </div>
                     <div>
                       <h4 className="text-sm font-semibold mb-1 text-destructive">Error Summary</h4>
