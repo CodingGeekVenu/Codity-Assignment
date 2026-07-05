@@ -7,7 +7,7 @@ The system is designed with a decoupling of the API layer and the Background Wor
 - **API Layer:** FastAPI provides high-performance endpoints for submitting and monitoring jobs. Includes pagination and filtering for retrieving jobs.
 - **Database:** PostgreSQL handles state storage and locking (`SELECT ... FOR UPDATE SKIP LOCKED`), ensuring concurrency safety and atomicity without needing an external queue broker like RabbitMQ or Redis.
 - **Worker Pool:** A cluster of Python background workers poll the database to claim jobs. We capture full execution logs in a structured `job_logs` table for complete tracking.
-- **Frontend Dashboard:** A React application polling the backend for live queue updates, execution logs, and DLQ tracking.
+- **Frontend Dashboard:** A React application polling the backend for live queue updates, execution logs, DLQ tracking, and real-time worker heartbeat monitoring.
 
 ![Architecture Diagram](./architecture.svg)
 
