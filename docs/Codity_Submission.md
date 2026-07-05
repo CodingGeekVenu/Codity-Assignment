@@ -9,10 +9,10 @@ The system is designed with a decoupling of the API layer and the Background Wor
 - **Worker Pool:** A cluster of Python background workers poll the database to claim jobs. We capture full execution logs in a structured `job_logs` table for complete tracking.
 - **Frontend Dashboard:** A React application polling the backend for live queue updates, execution logs, and DLQ tracking.
 
-![Architecture Diagram](./architecture.png)
+![Architecture Diagram](./architecture.svg)
 
 ## Entity-Relationship Diagram
-![ER Diagram](./er_diagram.png)
+![ER Diagram](./er_diagram.svg)
 
 ## Design Decisions
 1. **Queue Architecture (Polling vs WebSockets):** I opted for short-polling from the frontend. Given the constraints and the explicit rubric assigning 10 marks to polling functionality, this approach completely fulfills the core requirement while avoiding the complexity of WebSocket state management. The backend is perfectly capable of handling the lightweight load of dashboard status polling.
